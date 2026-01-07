@@ -1,5 +1,9 @@
 {
     "tasks": {
-        "start": "deno run --allow-net --allow-env --env server.ts"
+        "run": "deno run --allow-net --allow-env --env server.ts",
+        "start": "pm2 start server.ts --interpreter deno --interpreter-args \"run --allow-net --allow-env --env\" --name USST-CourseBridge",
+        "stop": "pm2 stop USST-CourseBridge",
+        "logs": "pm2 logs USST-CourseBridge",
+        "monit": "pm2 monit"
     }
 }
