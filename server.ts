@@ -81,36 +81,49 @@ if (!currentCookie) {
     logger.error('No valid cookie after initialization.');
     Deno.exit(1);
 }
-setInterval(tryRefreshCookie, 10 * 60 * 1000);
+setInterval(tryRefreshCookie, 60 * 60 * 1000);
 
 Deno.serve({ hostname, port }, async (req) => {
-    const targetUrl = new URL(req.url);
+    const localUrl = new URL(req.url);
+    const localOrigin = localUrl.origin;
 
-    const headers = new Headers(req.headers);
-    headers.set('Cookie', getCurrentCookie());
-    headers.set('Host', courseHost);
-    headers.set('Origin', courseOrigin);
-    if (headers.has('Referer')) {
-        headers.set('Referer', headers.get('Referer')!.replace(targetUrl.origin, courseOrigin));
-    }
-    headers.delete('User-Agent');
+    const reqBody = req.method === 'GET' || req.method === 'HEAD' ? null : await req.arrayBuffer();
 
-    targetUrl.protocol = 'https:';
-    targetUrl.host = courseHost;
-    targetUrl.port = '';
+    const makeRequest = async () => {
+        const headers = new Headers(req.headers);
+        headers.set('Cookie', getCurrentCookie());
+        headers.set('Host', courseHost);
+        headers.set('Origin', courseOrigin);
+        if (headers.has('Referer')) {
+            headers.set('Referer', headers.get('Referer')!.replace(localOrigin, courseOrigin));
+        }
+        headers.delete('User-Agent');
 
-    try {
-        const res = await fetch(targetUrl.toString(), {
+        const proxyUrl = new URL(req.url);
+        proxyUrl.protocol = 'https:';
+        proxyUrl.host = courseHost;
+        proxyUrl.port = '';
+
+        return await fetch(proxyUrl.toString(), {
             method: req.method,
             headers: headers,
-            body: req.body,
+            body: reqBody,
         });
+    };
+
+    try {
+        let res = await makeRequest();
+
+        if (res.headers.has('Set-Cookie')) {
+            logger.info('Detected Set-Cookie in response, refreshing cookie and retrying...');
+            await tryRefreshCookie();
+            res = await makeRequest();
+        }
 
         const resHeaders = new Headers(res.headers);
         const location = resHeaders.get('Location');
         if (location && location.includes(courseHost)) {
-            const localUrl = new URL(req.url);
-            const newLocation = location.replace(courseOrigin, `${localUrl.protocol}//${localUrl.host}`);
+            const newLocation = location.replace(courseOrigin, localOrigin);
             resHeaders.set('Location', newLocation);
         }
 
