@@ -20,9 +20,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { target: x86_64-unknown-linux-gnu, os: linux, suffix: '' }
-          - { target: x86_64-apple-darwin,      os: macos, suffix: '' }
-          - { target: x86_64-pc-windows-msvc,   os: windows, suffix: '.exe' }
+          - { target: x86_64-pc-windows-msvc,    os: windows, arch: x86_64, suffix: '.exe' }
+          - { target: x86_64-apple-darwin,       os: macos,   arch: x86_64, suffix: ''     }
+          - { target: aarch64-apple-darwin,      os: macos,   arch: arm64,  suffix: ''     }
+          - { target: x86_64-unknown-linux-gnu,  os: linux,   arch: x86_64, suffix: ''     }
+          - { target: aarch64-unknown-linux-gnu, os: linux,   arch: arm64,  suffix: ''     }
 
     steps:
       - uses: actions/checkout@v4
@@ -34,7 +36,7 @@ jobs:
 
       - name: Compile
         run: |
-          OUTPUT="${{ env.APP_NAME }}-${{ github.ref_name }}-${{ matrix.os }}${{ matrix.suffix }}"
+          OUTPUT="${{ env.APP_NAME }}-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.suffix }}"
           deno compile --allow-net --allow-env -q --target ${{ matrix.target }} --output "$OUTPUT" server.ts
           echo "EXE_PATH=$OUTPUT" >> $GITHUB_ENV
 
