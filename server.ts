@@ -1,26 +1,37 @@
-let currentCookie = '';
+import { logger, input, inputPassword } from './utils.ts';
 
-const userName = Deno.env.get('USERNAME');
-const password = Deno.env.get('PASSWORD');
-const realName = Deno.env.get('REALNAME');
-const hostname = Deno.env.get('HOSTNAME') ?? '127.0.0.1';
+let currentCookie = '';
+let refreshPromise: Promise<void> | null = null;
+
+console.clear();
+const userName = Deno.env.get('USST_USERNAME') ?? input('Enter username:');
+const password = Deno.env.get('USST_PASSWORD') ?? inputPassword('Enter password:');
+const realName = Deno.env.get('USST_REALNAME');
+const hostname = Deno.env.get('HOSTNAME') ?? '0.0.0.0';
 const port = Number(Deno.env.get('PORT') ?? 1906);
 
 if (!userName || !password) {
-    console.error('Please set USERNAME and PASSWORD envs.');
+    logger.error('Please set username and password through envs or input.');
     Deno.exit(1);
 }
 
-const refreshCookie = async () => {
+const courseHost = 'courses.usst.edu.cn';
+const courseOrigin = `https://${courseHost}`;
+
+const maxRetries = 3;
+const refreshCookie = async (attempt = 1) => {
     try {
-        console.log(`Logging in as ${userName}`);
-        const loginUrl = 'https://courses.usst.edu.cn/auth/login.do';
+        if (attempt > 1) {
+            logger.info(`Retrying login attempt ${attempt} of ${maxRetries}...`);
+        }
+        logger.info(`Logging in as ${userName}`);
+        const loginUrl = `${courseOrigin}/auth/login.do`;
         const params = new URLSearchParams({
             userName,
             password,
             response_type: 'code',
             client_id: '542db1ec1ad011e98bb40014101f0e28',
-            redirect_uri: 'https://courses.usst.edu.cn/app/oauth/2.0/authzCodeCallback',
+            redirect_uri: `${courseOrigin}/app/oauth/2.0/authzCodeCallback`,
             login_type: 'outer',
         });
 
@@ -29,39 +40,64 @@ const refreshCookie = async () => {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: params.toString(),
         });
-        console.log(`${response.status} ${response.statusText}`);
+        logger.info(`Request status: ${response.status} ${response.statusText}`);
 
         const cookies = response.headers.getSetCookie();
-        if (cookies && cookies.length > 0) {
-            currentCookie = Array.from(new Set(cookies.map((c) => c.split(';')[0]))).join('; ');
-            console.log('Cookie updated:', currentCookie);
-        } else {
-            console.warn('Failed to get Cookie from response headers');
+        if (!cookies || !cookies.length) {
+            logger.warn('No cookies returned in response headers');
+            const responseText = await response.text();
+            const match = responseText.match(/\$\("#errorMsg"\)\.html\("(.+?)"\);/);
+            throw new Error(match ? `Login failed: ${match[1]}` : 'Login failed: Unknown error');
         }
+
+        currentCookie = Array.from(new Set(cookies.map((c) => c.split(';')[0]))).join('; ');
+        logger.info('Cookie updated:', currentCookie);
     } catch (error) {
-        console.error('Login failed:', error instanceof Error ? error.message : error);
+        logger.warn(error instanceof Error ? error.message : error);
+        if (attempt >= maxRetries) {
+            logger.error('Max retries reached. Login failed.');
+            return;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** attempt));
+        await refreshCookie(attempt + 1);
+    } finally {
+        refreshPromise = null;
     }
+};
+
+const tryRefreshCookie = () => {
+    if (!refreshPromise) {
+        refreshPromise = refreshCookie();
+    }
+
+    return refreshPromise;
 };
 
 const getCurrentCookie = () => currentCookie;
 
-await refreshCookie();
-setInterval(refreshCookie, 10 * 60 * 1000);
+await tryRefreshCookie();
+if (!currentCookie) {
+    logger.error('No valid cookie after initialization.');
+    Deno.exit(1);
+}
+setInterval(tryRefreshCookie, 10 * 60 * 1000);
 
 Deno.serve({ hostname, port }, async (req) => {
     const targetUrl = new URL(req.url);
-    targetUrl.protocol = 'https:';
-    targetUrl.host = 'courses.usst.edu.cn';
-    targetUrl.port = '';
 
     const headers = new Headers(req.headers);
     headers.set('Cookie', getCurrentCookie());
-    headers.set('Host', 'courses.usst.edu.cn');
-    headers.set('Origin', 'https://courses.usst.edu.cn');
+    headers.set('Host', courseHost);
+    headers.set('Origin', courseOrigin);
     if (headers.has('Referer')) {
-        headers.set('Referer', headers.get('Referer')!.replace(new URL(req.url).origin, 'https://courses.usst.edu.cn'));
+        headers.set('Referer', headers.get('Referer')!.replace(targetUrl.origin, courseOrigin));
     }
     headers.delete('User-Agent');
+
+    targetUrl.protocol = 'https:';
+    targetUrl.host = courseHost;
+    targetUrl.port = '';
 
     try {
         const res = await fetch(targetUrl.toString(), {
@@ -71,11 +107,11 @@ Deno.serve({ hostname, port }, async (req) => {
         });
 
         const resHeaders = new Headers(res.headers);
-        const location = resHeaders.get('location');
-        if (location && location.includes('courses.usst.edu.cn')) {
+        const location = resHeaders.get('Location');
+        if (location && location.includes(courseHost)) {
             const localUrl = new URL(req.url);
-            const newLocation = location.replace('https://courses.usst.edu.cn', `${localUrl.protocol}//${localUrl.host}`);
-            resHeaders.set('location', newLocation);
+            const newLocation = location.replace(courseOrigin, `${localUrl.protocol}//${localUrl.host}`);
+            resHeaders.set('Location', newLocation);
         }
 
         const responseInit = {
@@ -83,7 +119,7 @@ Deno.serve({ hostname, port }, async (req) => {
             statusText: res.statusText,
             headers: resHeaders,
         };
-        if (realName && resHeaders.get('content-type')?.includes('application/json')) {
+        if (realName && resHeaders.get('Content-Type')?.split(';')[0].trim() === 'application/json') {
             const text = await res.text();
             const replaced = text.replaceAll(realName, 'USST');
             return new Response(replaced, responseInit);
@@ -91,9 +127,9 @@ Deno.serve({ hostname, port }, async (req) => {
             return new Response(res.body, responseInit);
         }
     } catch (e) {
-        console.error('Proxy error:', e);
+        logger.error('Proxy error:', e);
         return new Response('Proxy error.', { status: 500 });
     }
 });
 
-console.log(`Proxy server is running on port ${port}`);
+logger.info(`Proxy server is running on ${hostname}:${port}`);

@@ -25,7 +25,7 @@ irm https://deno.land/install.ps1 | iex
 
 ```
 
-### 2. 项目配置
+### 2. 项目配置（可选）
 
 复制环境模板并编辑用户信息：
 
@@ -35,13 +35,16 @@ cp .env.example .env
 
 使用编辑器打开 `.env`，配置环境变量：
 
-| 配置项     | 必填                   | 说明                           |
-| ---------- | ---------------------- | ------------------------------ |
-| `USERNAME` | 是                     | 智慧教室平台登录账号（学号）   |
-| `PASSWORD` | 是                     | 统一身份认证密码               |
-| `REALNAME` | 否，未填时禁用替换功能 | 用于将页面中的真名替换成“USST” |
-| `HOSTNAME` | 否，默认为 `127.0.0.1` | 监听地址                       |
-| `PORT`     | 否，默认为 `1906`      | 监听端口                       |
+| 配置项          | 说明                                                   |
+| --------------- | ------------------------------------------------------ |
+| `USST_USERNAME` | 智慧教室登录账号（学号）。未配置时将在启动后提示输入。 |
+| `USST_PASSWORD` | 统一身份认证密码。未配置时将在启动后提示输入。         |
+| `USST_REALNAME` | 用于将页面中的真名替换成“USST”。未填时禁用替换功能。   |
+| `HOSTNAME`      | 监听地址。默认为 `0.0.0.0`。                           |
+| `PORT`          | 监听端口。默认为 `1906`。                              |
+
+> [!TIP]
+> 为了安全起见，推荐在启动后根据提示输入密码，而非将其写入配置文件。
 
 ### 3. 启动与管理服务
 
@@ -73,11 +76,17 @@ deno task start
 | **监控资源占用** | `deno task monit` |
 | **停止服务**     | `deno task stop`  |
 
-## 🌐 公网访问与安全增强
+## 🌐 网络访问与安全
 
-为了在校外或跨网络访问，建议通过隧道技术暴露服务。
+### 局域网访问
 
-### 推荐方案：Cloudflare 生态
+如果你希望在室内局域网内与伙伴分享，可以将 `HOSTNAME` 设置为 `0.0.0.0`。
+
+随后，同一局域网下的设备可以通过 `http://[计算机名].local:1906` 访问（例如 `http://my-laptop.local:1906`）。
+
+### 公网访问建议
+
+为了在校外或跨网络访问，建议通过隧道技术暴露服务。推荐使用 Cloudflare 生态。
 
 1. **建立隧道 (Tunnel)**：使用 [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/) 穿透内网，无需公网 IP 即可访问。
 2. **访问控制 (Access)**：配合 [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/identity/) 增加一层验证（如邮箱验证码，并配置邮箱白名单），确保只有你允许的人能访问代理地址。
