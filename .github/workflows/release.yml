@@ -1,0 +1,71 @@
+name: Build and Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  APP_NAME: usst-course-bridge
+  DENO_VERSION: v2.x
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-gnu, os: linux, suffix: '' }
+          - { target: x86_64-apple-darwin,      os: macos, suffix: '' }
+          - { target: x86_64-pc-windows-msvc,   os: windows, suffix: '.exe' }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: ${{ env.DENO_VERSION }}
+
+      - name: Compile
+        run: |
+          OUTPUT="${{ env.APP_NAME }}-${{ github.ref_name }}-${{ matrix.os }}${{ matrix.suffix }}"
+          deno compile --allow-net --allow-env -q --target ${{ matrix.target }} --output "$OUTPUT" server.ts
+          echo "EXE_PATH=$OUTPUT" >> $GITHUB_ENV
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-${{ matrix.target }}
+          path: ${{ env.EXE_PATH }}
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ${{ env.APP_NAME }}-*
+          merge-multiple: true
+          path: dist
+
+      - name: Display structure of downloaded files
+        run: ls -R dist/
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref, '-') }}
+          token: ${{ secrets.GITHUB_TOKEN }}

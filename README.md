@@ -12,20 +12,36 @@
 
 ## 🛠️ 快速开始
 
-### 1. 环境准备
+本项目提供两种运行方式：
 
-确保你的系统中已安装 [Deno](https://deno.land/manual/getting_started/installation)。
+### 方式一：直接运行可执行文件（推荐）
 
-```bash
-# macOS / Linux
-curl -fsSL https://deno.land/x/install/install.sh | sh
+1. **下载程序**：前往 [Releases](../../releases) 页面，下载对应操作系统的压缩文件并在本地解压。
+2. **启动程序**：
+    - **Windows**: 双击运行 `usst-course-bridge-windows.exe`。
+    - **macOS / Linux**: 在终端执行 `./usst-course-bridge-[os]`（可能需要先执行 `chmod +x` 赋予权限）。
+3. **配置环境（可选）**：参考下方的项目配置，手动创建 `.env` 文件。若不配置，程序启动后会交互式提示输入。
 
-# Windows (PowerShell)
-irm https://deno.land/install.ps1 | iex
+### 方式二：通过源代码运行
 
-```
+1. **环境准备**：确保你的系统中已安装 [Deno](https://deno.land/manual/getting_started/installation)。
 
-### 2. 项目配置（可选）
+    ```bash
+    # Windows (PowerShell)
+    irm https://deno.land/install.ps1 | iex
+
+    # macOS / Linux
+    curl -fsSL https://deno.land/x/install/install.sh | sh
+    ```
+
+2. **运行项目**：
+    ```bash
+    git clone https://github.com/BobLiu20/USST-CourseBridge.git
+    cd USST-CourseBridge
+    deno task run
+    ```
+
+## ⚙️ 项目配置（可选）
 
 复制环境模板并编辑用户信息：
 
@@ -44,31 +60,31 @@ cp .env.example .env
 | `PORT`          | 监听端口。默认为 `1906`。                              |
 
 > [!TIP]
+>
 > 为了安全起见，推荐在启动后根据提示输入密码，而非将其写入配置文件。
 
-### 3. 启动与管理服务
+## 🚀 启动与运维管理
 
-本项目支持前台运行，也可通过 `pm2` 进行后台运行：
+本项目支持前台运行，也可通过 [`pm2`](https://pm2.keymetrics.io/) 进行后台托管运行。
+
+### 基本启动
 
 -   **前台运行**：
-
-```bash
-deno task run
-```
-
--   **后台运行**（需要安装 [`pm2`](https://pm2.keymetrics.io/)）：
-
-```bash
-deno task start
-```
+    ```bash
+    deno task run
+    ```
+-   **后台运行**：
+    ```bash
+    deno task start
+    ```
 
 > [!CAUTION]
 >
 > **安全警告**：请务必在受信任的机器上运行此程序。严禁将包含真实密码的 `.env` 文件上传至 GitHub 等公共代码仓库。
 
-### 4. 后台运行管理
+### 后台运维指令
 
-当通过 `deno task start` 将服务通过 `pm2` 托管至后台后，你可以使用以下指令进行运维管理：
+当通过 `deno task start` 将服务托管至后台后，你可以使用以下指令进行运维管理：
 
 | 操作             | 指令              |
 | ---------------- | ----------------- |
