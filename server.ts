@@ -17,6 +17,7 @@ if (!userName || !password) {
 
 const courseHost = 'courses.usst.edu.cn';
 const courseOrigin = `https://${courseHost}`;
+const videoHost = 'mss4.usst.edu.cn';
 
 const maxRetries = 3;
 const refreshCookie = async (attempt = 1) => {
@@ -84,61 +85,60 @@ if (!currentCookie) {
 setInterval(tryRefreshCookie, 60 * 60 * 1000);
 
 Deno.serve({ hostname, port }, async (req) => {
-    const localUrl = new URL(req.url);
-    const localOrigin = localUrl.origin;
+    const url = new URL(req.url);
+    const { pathname, search } = url;
 
-    const reqBody = req.method === 'GET' || req.method === 'HEAD' ? null : await req.arrayBuffer();
+    if (pathname.startsWith(`/${videoHost}`)) {
+        const proxyUrl = new URL(pathname.replace(`/${videoHost}`, ''), `https://${videoHost}`);
+        proxyUrl.search = search;
 
-    const makeRequest = async () => {
+        const headers = new Headers(req.headers);
+        headers.set('Host', videoHost);
+        return fetch(proxyUrl, { method: req.method, headers, body: req.body });
+    }
+
+    const reqBody = ['GET', 'HEAD'].includes(req.method) ? null : await req.arrayBuffer();
+
+    const fetchCourse = async () => {
         const headers = new Headers(req.headers);
         headers.set('Cookie', getCurrentCookie());
         headers.set('Host', courseHost);
         headers.set('Origin', courseOrigin);
         if (headers.has('Referer')) {
-            headers.set('Referer', headers.get('Referer')!.replace(localOrigin, courseOrigin));
+            headers.set('Referer', courseOrigin);
         }
         headers.delete('User-Agent');
 
-        const proxyUrl = new URL(req.url);
-        proxyUrl.protocol = 'https:';
-        proxyUrl.host = courseHost;
-        proxyUrl.port = '';
-
-        return await fetch(proxyUrl.toString(), {
-            method: req.method,
-            headers: headers,
-            body: reqBody,
-        });
+        const proxyUrl = new URL(pathname + search, courseOrigin);
+        return await fetch(proxyUrl, { method: req.method, headers, body: reqBody });
     };
 
     try {
-        let res = await makeRequest();
+        let res = await fetchCourse();
 
         if (res.headers.has('Set-Cookie')) {
-            logger.info('Detected Set-Cookie in response, refreshing cookie and retrying...');
+            logger.info('Detected Set-Cookie, refreshing...');
             await tryRefreshCookie();
-            res = await makeRequest();
+            res = await fetchCourse();
         }
 
         const resHeaders = new Headers(res.headers);
         const location = resHeaders.get('Location');
         if (location && location.includes(courseHost)) {
-            const newLocation = location.replace(courseOrigin, localOrigin);
+            const newLocation = location.replace(courseOrigin, '');
             resHeaders.set('Location', newLocation);
         }
 
-        const responseInit = {
-            status: res.status,
-            statusText: res.statusText,
-            headers: resHeaders,
-        };
-        if (realName && resHeaders.get('Content-Type')?.split(';')[0].trim() === 'application/json') {
-            const text = await res.text();
-            const replaced = text.replaceAll(realName, 'USST');
-            return new Response(replaced, responseInit);
-        } else {
-            return new Response(res.body, responseInit);
+        const responseInit = { status: res.status, statusText: res.statusText, headers: resHeaders };
+
+        if (resHeaders.get('Content-Type')?.includes('application/json')) {
+            let text = await res.text();
+            text = text.replaceAll(`https://${videoHost}`, `/${videoHost}`);
+            if (realName) text = text.replaceAll(realName, 'USST');
+            return new Response(text, responseInit);
         }
+
+        return new Response(res.body, responseInit);
     } catch (e) {
         logger.error('Proxy error:', e);
         return new Response('Proxy error.', { status: 500 });
