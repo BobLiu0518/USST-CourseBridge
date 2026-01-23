@@ -1,4 +1,4 @@
-import { logger, input, inputPassword, md5, generateRandomString } from './utils/mod.ts';
+import { logger, input, inputPassword, md5, generateRandomString, compileTwind } from './utils/mod.ts';
 
 let currentCookie = '';
 let secKey = '';
@@ -157,14 +157,18 @@ if (!currentCookie || !secKey) {
 }
 setInterval(tryRefreshCookie, 60 * 60 * 1000);
 
+let compiledHtml: string | null = null;
 Deno.serve({ hostname, port }, async (req) => {
     const url = new URL(req.url);
     const { pathname, searchParams } = url;
 
     if (pathname === '/' || pathname === '/index.html') {
         try {
-            const indexHtml = await Deno.readTextFile(new URL('./index.html', import.meta.url));
-            return new Response(indexHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+            if (!Deno.build.standalone || !compiledHtml) {
+                compiledHtml = compileTwind(await Deno.readTextFile(new URL('./index.html', import.meta.url)));
+            }
+
+            return new Response(compiledHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
         } catch (e) {
             logger.error('Failed to read index.html:', e);
             return new Response('index.html not found.', { status: 404 });

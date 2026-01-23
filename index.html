@@ -1,10 +1,9 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>USST-CourseBridge</title>
-        <script src="https://cdn.tailwindcss.com"></script>
         <style>
             * {
                 scrollbar-width: thin;
@@ -22,6 +21,7 @@
                 gap: 1rem;
                 width: 100%;
                 height: 100%;
+                padding: 1rem;
             }
             @media (min-width: 1280px) {
                 .video-layout-side-by-side {
@@ -34,6 +34,7 @@
                 gap: 1rem;
                 width: 100%;
                 height: 100%;
+                padding: 1rem;
             }
             .video-layout-v1-pip,
             .video-layout-v2-pip {
@@ -110,6 +111,51 @@
                 width: 100%;
                 height: 100%;
             }
+
+            .is-active-item {
+                background-color: rgba(239, 246, 255, 0.5) !important;
+                border-color: #dbeafe !important;
+            }
+            .is-inactive-item {
+                border-color: transparent !important;
+            }
+            .is-inactive-item:hover {
+                border-color: #e2e8f0 !important;
+            }
+            .is-fullscreen {
+                border-radius: 0 !important;
+                border: none !important;
+            }
+            .btn-layout {
+                padding: 0.125rem 0.5rem;
+                font-size: 10px;
+                border-radius: 0.25rem;
+                transition: all 0.2s;
+                color: rgba(255, 255, 255, 0.7);
+            }
+            .btn-layout:hover {
+                background-color: rgba(255, 255, 255, 0.2);
+            }
+            .btn-layout.active {
+                background-color: #ffffff;
+                color: #000000;
+            }
+            .btn-rate {
+                padding: 0.125rem 0.5rem;
+                font-size: 10px;
+                font-weight: 700;
+                border-radius: 0.25rem;
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                transition: all 0.2s;
+            }
+            .btn-rate:hover {
+                border-color: rgba(255, 255, 255, 0.5);
+            }
+            .btn-rate.active {
+                background-color: #ffffff;
+                color: #000000;
+                border-color: #ffffff;
+            }
         </style>
     </head>
     <body class="bg-[#f8fafc] text-slate-900 overflow-hidden">
@@ -149,7 +195,8 @@
                                         v-for="c in store.courses"
                                         :key="c.subjectId"
                                         @click="store.loadSessions(c)"
-                                        :class="['w-full text-left px-3 py-3 rounded-lg hover:bg-slate-100 transition flex flex-col gap-1.5 group border', store.selectedCourse?.subjectId === c.subjectId ? 'bg-blue-50/50 border-blue-100' : 'border-transparent hover:border-slate-200']">
+                                        class="w-full text-left px-3 py-3 rounded-lg hover:bg-slate-100 transition flex flex-col gap-1.5 group border"
+                                        :class="{ 'is-active-item': store.selectedCourse?.subjectId === c.subjectId, 'is-inactive-item': store.selectedCourse?.subjectId !== c.subjectId }">
                                         <div class="flex items-center justify-between gap-4 w-full">
                                             <span class="truncate font-bold text-slate-700 group-hover:text-blue-600 transition text-sm">
                                                 {{ c.subjectName }}
@@ -186,7 +233,8 @@
                                         v-for="s in store.sessions"
                                         :key="s.videId"
                                         @click="store.playVideo(s)"
-                                        :class="['w-full text-left px-3 py-3 rounded-lg hover:bg-slate-100 transition flex flex-col gap-1.5 group border', store.currentVideoId === s.videId ? 'bg-blue-50/50 border-blue-100' : 'border-transparent hover:border-slate-200']">
+                                        class="w-full text-left px-3 py-3 rounded-lg hover:bg-slate-100 transition flex flex-col gap-1.5 group border"
+                                        :class="{ 'is-active-item': store.currentVideoId === s.videId, 'is-inactive-item': store.currentVideoId !== s.videId }">
                                         <div class="flex items-center justify-between gap-4 w-full">
                                             <span class="truncate font-bold text-slate-700 group-hover:text-blue-600 transition text-sm">
                                                 {{ s.videName ?? '未命名节次' }}
@@ -230,9 +278,10 @@
 
                         <div
                             id="video-player-container"
-                            :class="['group relative bg-black rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10 flex flex-col items-center justify-center flex-1 min-h-0', store.isFullscreen ? 'rounded-none border-none' : '']">
+                            class="group relative bg-black rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10 flex flex-col items-center justify-center flex-1 min-h-0"
+                            :class="{ 'is-fullscreen': store.isFullscreen }">
                             <div
-                                :class="['w-full h-full flex-1 relative', store.currentLayout === 'side-by-side' ? 'video-layout-side-by-side p-4' : store.currentLayout === 'stacked' ? 'video-layout-stacked p-4' : store.currentLayout === 'v1-pip' ? 'video-layout-v1-pip' : store.currentLayout === 'v2-pip' ? 'video-layout-v2-pip' : store.currentLayout === 'v1-only' ? 'video-layout-v1-only' : 'video-layout-v2-only']">
+                                :class="['w-full h-full flex-1 relative', store.currentLayout === 'side-by-side' ? 'video-layout-side-by-side' : store.currentLayout === 'stacked' ? 'video-layout-stacked' : store.currentLayout === 'v1-pip' ? 'video-layout-v1-pip' : store.currentLayout === 'v2-pip' ? 'video-layout-v2-pip' : store.currentLayout === 'v1-only' ? 'video-layout-v1-only' : 'video-layout-v2-only']">
                                 <div id="v1-container" class="bg-black group/v1 flex items-center justify-center overflow-hidden">
                                     <video id="v1" class="max-w-full max-h-full object-contain" crossorigin="anonymous"></video>
                                 </div>
@@ -310,7 +359,8 @@
                                             <button
                                                 v-for="l in [{id:'v1-pip', n:'教室优先'}, {id:'v2-pip', n:'课件优先'}, {id:'side-by-side', n:'左右'}, {id:'stacked', n:'上下'}, {id:'v1-only', n:'仅教室'}, {id:'v2-only', n:'仅课件'}]"
                                                 @click="store.setLayout(l.id)"
-                                                :class="['px-2 py-0.5 text-[10px] rounded transition', store.currentLayout === l.id ? 'bg-white text-black' : 'hover:bg-white/20 text-white/70']">
+                                                class="btn-layout"
+                                                :class="{ active: store.currentLayout === l.id }">
                                                 {{ l.n }}
                                             </button>
                                         </div>
@@ -319,7 +369,8 @@
                                             <button
                                                 v-for="rate in [0.8, 1, 1.25, 1.5, 2, 3, 4]"
                                                 @click="store.setPlaybackRate(rate)"
-                                                :class="['px-2 py-0.5 text-[10px] font-bold rounded border transition', store.playbackRate === rate ? 'bg-white text-black border-white' : 'border-white/20 hover:border-white/50']">
+                                                class="btn-rate"
+                                                :class="{ active: store.playbackRate === rate }">
                                                 {{ rate }}x
                                             </button>
                                         </div>
