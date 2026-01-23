@@ -35,16 +35,17 @@ jobs:
           deno-version: ${{ env.DENO_VERSION }}
 
       - name: Compile
+        id: compile
         run: |
           OUTPUT="${{ env.APP_NAME }}-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.suffix }}"
           deno compile -Pq --include index.html --target ${{ matrix.target }} --output "$OUTPUT" server.ts
-          echo "EXE_PATH=$OUTPUT" >> $GITHUB_ENV
+          echo "exe_path=$OUTPUT" >> $GITHUB_OUTPUT
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.APP_NAME }}-${{ matrix.target }}
-          path: ${{ env.EXE_PATH }}
+          path: ${{ steps.compile.outputs.exe_path }}
           if-no-files-found: error
           retention-days: 1
 
