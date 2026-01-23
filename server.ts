@@ -1,4 +1,4 @@
-import { logger, input, inputPassword, md5, generateRandomString, compileTwind } from './utils/mod.ts';
+import { logger, input, inputPassword, md5, generateRandomString, compileTwind, errorResponse, htmlResponse, jsonResponse } from './utils/mod.ts';
 
 let currentCookie = '';
 let secKey = '';
@@ -95,8 +95,6 @@ const tryRefreshCookie = () => {
     return refreshPromise;
 };
 
-const getCurrentCookie = () => currentCookie;
-
 const setOauth = async (headers: Headers, body: URLSearchParams, path: string) => {
     const nonce = String(Date.now());
     const oauthPath = '';
@@ -132,9 +130,10 @@ const setOauth = async (headers: Headers, body: URLSearchParams, path: string) =
     body.set(randomP2, randomV2);
 };
 
-const fetchAPI = async (path: string, body: URLSearchParams, withOauth: boolean = false): Promise<string> => {
+const fetchAPI = async (path: string, rawBody: ConstructorParameters<typeof URLSearchParams>[0], withOauth: boolean = false): Promise<string> => {
+    const body = new URLSearchParams(rawBody);
     const headers = new Headers();
-    headers.set('Cookie', getCurrentCookie());
+    headers.set('Cookie', currentCookie);
     headers.set('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
     headers.set('Accept', 'application/json, text/javascript, */*; q=0.01');
 
@@ -168,10 +167,10 @@ Deno.serve({ hostname, port }, async (req) => {
                 compiledHtml = compileTwind(await Deno.readTextFile(new URL('./index.html', import.meta.url)));
             }
 
-            return new Response(compiledHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+            return htmlResponse(compiledHtml);
         } catch (e) {
             logger.error('Failed to read index.html:', e);
-            return new Response('index.html not found.', { status: 404 });
+            return errorResponse('index.html not found.', 404);
         }
     }
 
@@ -187,48 +186,52 @@ Deno.serve({ hostname, port }, async (req) => {
         return fetch(proxyUrl, { method: req.method, headers, body: req.body });
     }
 
+    const apiRoutes: Record<string, () => Promise<string>> = {
+        '/api/current-term': () =>
+            fetchAPI('/app/videosearchcriteria/match/termTimes', {
+                limit: '1',
+            }),
+        '/api/semesters': () =>
+            fetchAPI('/app/videosearchcriteria/semesterlist', {
+                pageIndex: '1',
+                pageSize: '60',
+            }),
+        '/api/subjects': () =>
+            fetchAPI('/app/system/course/subject/findSubjectVodList', {
+                pageIndex: '1',
+                pageSize: '50',
+                orderByType: '',
+                termTimeId: searchParams.get('termTimeId') ?? '',
+            }),
+        '/api/sessions': () =>
+            fetchAPI('/app/system/resource/vodVideo/getCourseListBySubject', {
+                orderField: 'courTimes',
+                subjectId: searchParams.get('subjectId') ?? '',
+                teclId: searchParams.get('teclId') ?? '',
+            }),
+        '/api/video-info': async () => {
+            const text = await fetchAPI(
+                '/app/system/resource/vodVideo/getvideoinfos',
+                {
+                    playTypeHls: 'true',
+                    id: searchParams.get('id') ?? '',
+                },
+                true,
+            );
+            return text.replaceAll(`https://${videoHost}/`, '/video/');
+        },
+    };
+
     try {
-        if (pathname === '/api/current-term') {
-            const body = new URLSearchParams({ limit: '1' });
-            const jsonText = await fetchAPI('/app/videosearchcriteria/match/termTimes', body);
-            return new Response(jsonText, { headers: { 'Content-Type': 'application/json; charset=utf-8' } });
-        }
-
-        if (pathname === '/api/semesters') {
-            const body = new URLSearchParams({ pageIndex: '1', pageSize: '60' });
-            const jsonText = await fetchAPI('/app/videosearchcriteria/semesterlist', body);
-            return new Response(jsonText, { headers: { 'Content-Type': 'application/json; charset=utf-8' } });
-        }
-
-        if (pathname === '/api/subjects') {
-            const termTimeId = searchParams.get('termTimeId') ?? '';
-            const body = new URLSearchParams({ pageIndex: '1', pageSize: '50', orderByType: '', termTimeId });
-            const jsonText = await fetchAPI('/app/system/course/subject/findSubjectVodList', body);
-            return new Response(jsonText, { headers: { 'Content-Type': 'application/json; charset=utf-8' } });
-        }
-
-        if (pathname === '/api/sessions') {
-            const subjectId = searchParams.get('subjectId') ?? '';
-            const teclId = searchParams.get('teclId') ?? '';
-            const body = new URLSearchParams({ orderField: 'courTimes', subjectId, teclId });
-            const jsonText = await fetchAPI('/app/system/resource/vodVideo/getCourseListBySubject', body);
-            return new Response(jsonText, { headers: { 'Content-Type': 'application/json; charset=utf-8' } });
-        }
-
-        if (pathname === '/api/video-info') {
-            const id = searchParams.get('id') ?? '';
-            const body = new URLSearchParams({ playTypeHls: 'true', id });
-            let text = await fetchAPI('/app/system/resource/vodVideo/getvideoinfos', body, true);
-
-            text = text.replaceAll(`https://${videoHost}/`, '/video/');
-            return new Response(text, { headers: { 'Content-Type': 'application/json; charset=utf-8' } });
+        if (pathname in apiRoutes) {
+            return jsonResponse(await apiRoutes[pathname]());
         }
     } catch (e) {
         logger.error('API Error:', e);
-        return new Response('Internal Server Error', { status: 500 });
+        return errorResponse('Internal Server Error', 500);
     }
 
-    return new Response('Not Found', { status: 404 });
+    return errorResponse('Not Found', 404);
 });
 
 logger.info(`Course platform is running on http://${hostname}:${port}`);
