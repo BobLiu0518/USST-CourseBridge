@@ -1,14 +1,5 @@
-import { blue, gray, red, yellow, green } from '@std/fmt/colors';
-
-const getTimestamp = () => {
-    return gray(new Date().toLocaleTimeString('zh-CN', { timeStyle: 'medium' }));
-};
-
-export const logger = {
-    info: (...args: unknown[]) => console.log(getTimestamp(), blue('Info '), ...args),
-    warn: (...args: unknown[]) => console.warn(getTimestamp(), yellow('Warn '), ...args),
-    error: (...args: unknown[]) => console.error(getTimestamp(), red('Error'), ...args),
-};
+import { green, gray } from '@std/fmt/colors';
+import { getTimestamp } from './logger.ts';
 
 const doInput = (message: string, isPassword = false): string | null => {
     if (!Deno.stdin.isTerminal()) {

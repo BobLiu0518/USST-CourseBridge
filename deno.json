@@ -1,12 +1,21 @@
 {
     "tasks": {
-        "run": "deno run --allow-net --allow-env --env -q server.ts",
-        "start": "pm2 start server.ts --interpreter deno --interpreter-args \"run --allow-net --allow-env --env\" --name USST-CourseBridge",
+        "run": "deno run --allow-read --allow-net --allow-env --env -q server.ts",
+        "start": "pm2 start server.ts --interpreter deno --interpreter-args \"run --allow-read --allow-net --allow-env --env\" --name USST-CourseBridge",
         "stop": "pm2 stop USST-CourseBridge",
         "logs": "pm2 logs USST-CourseBridge",
         "monit": "pm2 monit"
     },
     "imports": {
-        "@std/fmt": "jsr:@std/fmt@^1.0.8"
+        "@std/fmt": "jsr:@std/fmt@^1.0.8",
+        "@std/crypto": "jsr:@std/crypto@^1.0.3",
+        "@std/encoding/hex": "jsr:@std/encoding@^1.0.5/hex"
+    },
+    "compile": {
+        "permissions": {
+            "net": true,
+            "env": true,
+            "read": true
+        }
     }
 }

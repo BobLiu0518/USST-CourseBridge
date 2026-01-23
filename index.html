@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>USST-CourseBridge</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <style>
+            * {
+                scrollbar-width: thin;
+                scrollbar-color: #e2e8f0 transparent;
+            }
+            .course-card:hover .course-title {
+                color: #1e88e5;
+            }
+            [v-cloak] {
+                display: none !important;
+            }
+            .video-layout-side-by-side {
+                display: grid;
+                grid-template-columns: 1fr;
+                gap: 1rem;
+                width: 100%;
+                height: 100%;
+            }
+            @media (min-width: 1280px) {
+                .video-layout-side-by-side {
+                    grid-template-columns: 1fr 1fr;
+                }
+            }
+            .video-layout-stacked {
+                display: grid;
+                grid-template-rows: 1fr 1fr;
+                gap: 1rem;
+                width: 100%;
+                height: 100%;
+            }
+            .video-layout-v1-pip,
+            .video-layout-v2-pip {
+                position: relative;
+                width: 100%;
+                height: 100%;
+            }
+            .video-layout-v1-pip #v1-container,
+            .video-layout-v2-pip #v2-container {
+                width: 100%;
+                height: 100%;
+                position: absolute;
+                top: 0;
+                left: 0;
+            }
+            .video-layout-v1-pip #v2-container,
+            .video-layout-v2-pip #v1-container {
+                position: absolute;
+                bottom: 1rem;
+                right: 1rem;
+                width: 25%;
+                z-index: 20;
+                box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+                border: 2px solid rgba(255, 255, 255, 0.3);
+                border-radius: 0.5rem;
+                overflow: hidden;
+            }
+            .video-layout-v1-pip #v2-container::before,
+            .video-layout-v2-pip #v1-container::before {
+                content: '';
+                display: block;
+                padding-top: 56.25%;
+            }
+            .video-layout-v1-pip #v2-container video,
+            .video-layout-v2-pip #v1-container video {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+            }
+
+            .video-wrapper {
+                position: relative;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .video-label {
+                position: absolute;
+                padding: 0.25rem 0.5rem;
+                background: rgba(0, 0, 0, 0.5);
+                backdrop-filter: blur(8px);
+                border-radius: 0.25rem;
+                font-size: 10px;
+                font-weight: bold;
+                color: white;
+                letter-spacing: 0.05em;
+                pointer-events: none;
+                z-index: 30;
+                transition: opacity 0.3s;
+            }
+            .video-layout-v1-only,
+            .video-layout-v2-only {
+                width: 100%;
+                height: 100%;
+            }
+            .video-layout-v1-only #v2-container,
+            .video-layout-v2-only #v1-container {
+                display: none;
+            }
+            .video-layout-v1-only #v1-container,
+            .video-layout-v2-only #v2-container {
+                width: 100%;
+                height: 100%;
+            }
+        </style>
+    </head>
+    <body class="bg-[#f8fafc] text-slate-900 overflow-hidden">
+        <div id="app" v-cloak class="mx-auto h-screen flex flex-col">
+            <header class="h-16 flex items-center justify-between px-8 border-b bg-white/80 backdrop-blur-md sticky top-0 z-50 shrink-0">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">C</div>
+                    <h1 class="text-xl font-bold tracking-tight">USST-CourseBridge</h1>
+                </div>
+            </header>
+
+            <main class="flex-1 flex overflow-hidden">
+                <aside class="w-80 border-r bg-white overflow-y-auto shrink-0 scroll-smooth">
+                    <div class="p-2 border-b flex flex-col">
+                        <div class="px-3 py-2 flex items-center justify-between">
+                            <h2 class="text-xs font-semibold text-slate-400 tracking-wider">我的课程</h2>
+                            <select
+                                v-model="store.selectedTermId"
+                                @change="store.onTermChange"
+                                class="text-xs bg-slate-50 border-none rounded-md px-2 py-1 text-slate-500 focus:ring-0 cursor-pointer">
+                                <option value="">不限学期</option>
+                                <option v-for="t in store.semesters" :value="t.id" :key="t.id">
+                                    {{ t.termTimeBeginYear }}-{{ t.termTimeEndYear }}-{{ t.termTimeTerm }}
+                                </option>
+                            </select>
+                        </div>
+
+                        <div class="course-list space-y-1 pr-1">
+                            <template v-if="store.loadingCourses">
+                                <div class="animate-pulse space-y-2">
+                                    <div v-for="i in 5" class="h-10 bg-slate-100 rounded-lg"></div>
+                                </div>
+                            </template>
+                            <template v-else>
+                                <div class="space-y-1">
+                                    <button
+                                        v-for="c in store.courses"
+                                        :key="c.subjectId"
+                                        @click="store.loadSessions(c)"
+                                        :class="['w-full text-left px-3 py-3 rounded-lg hover:bg-slate-100 transition flex flex-col gap-1.5 group border', store.selectedCourse?.subjectId === c.subjectId ? 'bg-blue-50/50 border-blue-100' : 'border-transparent hover:border-slate-200']">
+                                        <div class="flex items-center justify-between gap-4 w-full">
+                                            <span class="truncate font-bold text-slate-700 group-hover:text-blue-600 transition text-sm">
+                                                {{ c.subjectName }}
+                                            </span>
+                                            <span class="shrink-0 text-[11px] font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                                {{ c.userList?.map(u => u.userName).join(', ') ?? '未知' }}
+                                            </span>
+                                        </div>
+                                        <div class="flex items-center justify-between gap-2 w-full">
+                                            <span class="text-[10px] text-slate-300 truncate font-mono">{{ c.teclName }}</span>
+                                            <span class="text-[10px] text-slate-400 font-medium whitespace-nowrap overflow-hidden text-ellipsis">
+                                                {{ c.classroomName ?? '未知' }}
+                                            </span>
+                                        </div>
+                                    </button>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <div v-if="store.selectedCourse" class="p-2 flex flex-col">
+                        <div class="px-3 py-2 flex items-center justify-between">
+                            <h2 class="text-xs font-semibold text-slate-400 tracking-wider">{{ store.selectedCourse.subjectName }}</h2>
+                        </div>
+                        <div class="session-list space-y-1 pr-1">
+                            <template v-if="store.loadingSessions">
+                                <div class="animate-pulse space-y-2 px-2">
+                                    <div v-for="i in 8" class="h-12 bg-slate-100 rounded-lg"></div>
+                                </div>
+                            </template>
+                            <template v-else>
+                                <div class="space-y-1">
+                                    <button
+                                        v-for="s in store.sessions"
+                                        :key="s.videId"
+                                        @click="store.playVideo(s)"
+                                        :class="['w-full text-left px-3 py-3 rounded-lg hover:bg-slate-100 transition flex flex-col gap-1.5 group border', store.currentVideoId === s.videId ? 'bg-blue-50/50 border-blue-100' : 'border-transparent hover:border-slate-200']">
+                                        <div class="flex items-center justify-between gap-4 w-full">
+                                            <span class="truncate font-bold text-slate-700 group-hover:text-blue-600 transition text-sm">
+                                                {{ s.videName ?? '未命名节次' }}
+                                            </span>
+                                        </div>
+                                        <div class="flex items-center justify-between gap-2 w-full">
+                                            <span class="text-[10px] text-slate-400 font-medium truncate">
+                                                {{ store.formatTime(s.courBeginTime, s.courEndTime) }}
+                                            </span>
+                                        </div>
+                                    </button>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </aside>
+
+                <section class="flex-1 flex flex-col bg-slate-50 p-8 overflow-y-auto">
+                    <div v-if="!store.currentVideoId" class="flex-1 flex flex-col items-center justify-center text-center space-y-4">
+                        <div class="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 mb-2">
+                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                        <h2 class="text-2xl font-bold text-slate-800">准备好开始学习了吗？</h2>
+                        <p class="text-slate-500 max-w-sm">从左侧选择课程，查看所有录制节次。</p>
+                    </div>
+
+                    <div v-else class="flex-1 flex flex-col space-y-4 h-full overflow-hidden">
+                        <div class="flex items-center justify-between shrink-0">
+                            <div>
+                                <h2 class="text-2xl font-bold text-slate-900">{{ store.currentVideoTitle }}</h2>
+                                <p class="text-slate-500 text-sm mt-1">教师：{{ store.currentTeacher }}</p>
+                            </div>
+                        </div>
+
+                        <div
+                            id="video-player-container"
+                            :class="['group relative bg-black rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10 flex flex-col items-center justify-center flex-1 min-h-0', store.isFullscreen ? 'rounded-none border-none' : '']">
+                            <div
+                                :class="['w-full h-full flex-1 relative', store.currentLayout === 'side-by-side' ? 'video-layout-side-by-side p-4' : store.currentLayout === 'stacked' ? 'video-layout-stacked p-4' : store.currentLayout === 'v1-pip' ? 'video-layout-v1-pip' : store.currentLayout === 'v2-pip' ? 'video-layout-v2-pip' : store.currentLayout === 'v1-only' ? 'video-layout-v1-only' : 'video-layout-v2-only']">
+                                <div id="v1-container" class="bg-black group/v1 flex items-center justify-center overflow-hidden">
+                                    <video id="v1" class="max-w-full max-h-full object-contain" crossorigin="anonymous"></video>
+                                </div>
+                                <div id="v2-container" class="bg-black group/v2 font-bold flex items-center justify-center overflow-hidden">
+                                    <video id="v2" class="max-w-full max-h-full object-contain" crossorigin="anonymous"></video>
+                                </div>
+                            </div>
+                            <div
+                                class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 pt-12 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-30">
+                                <div class="relative w-full h-1.5 mb-4 group/progress cursor-pointer">
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        :max="store.duration"
+                                        step="0.1"
+                                        :value="store.currentTime"
+                                        @mousedown="store.seekStart"
+                                        @touchstart="store.seekStart"
+                                        @input="store.seek"
+                                        @mouseup="store.seekEnd"
+                                        @touchend="store.seekEnd"
+                                        class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                                    <div class="absolute inset-0 bg-white/20 rounded-full"></div>
+                                    <div
+                                        class="absolute inset-y-0 left-0 bg-blue-500 rounded-full"
+                                        :style="{ width: (store.duration ? (store.currentTime / store.duration * 100) : 0) + '%' }"></div>
+                                    <div
+                                        class="absolute top-1/2 -ml-2 -mt-2 w-4 h-4 bg-white rounded-full shadow-lg scale-0 group-hover/progress:scale-100 transition-transform duration-200"
+                                        :style="{ left: (store.duration ? (store.currentTime / store.duration * 100) : 0) + '%' }"></div>
+                                </div>
+
+                                <div class="flex items-center justify-between text-white">
+                                    <div class="flex items-center gap-4">
+                                        <button @click="store.togglePlay" class="hover:text-blue-400 transition">
+                                            <svg v-if="!store.isPlaying" class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                                                <path d="M8 5v14l11-7z" />
+                                            </svg>
+                                            <svg v-else class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                                                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+                                            </svg>
+                                        </button>
+
+                                        <span class="text-xs font-mono">
+                                            {{ store.formatDuration(store.currentTime) }} / {{ store.formatDuration(store.duration) }}
+                                        </span>
+
+                                        <div class="flex items-center gap-4 bg-white/5 px-3 py-1 rounded-lg">
+                                            <div class="flex items-center gap-2 group/v1-vol">
+                                                <span class="text-[10px] text-white/50 font-bold">教室音量</span>
+                                                <input
+                                                    type="range"
+                                                    min="0"
+                                                    max="1"
+                                                    step="0.01"
+                                                    v-model="store.volumeV1"
+                                                    @input="store.updateVolumes"
+                                                    class="w-16 h-1 bg-white/20 rounded-full appearance-none cursor-pointer accent-blue-500" />
+                                            </div>
+                                            <div class="flex items-center gap-2 group/v2-vol">
+                                                <span class="text-[10px] text-white/50 font-bold">课件音量</span>
+                                                <input
+                                                    type="range"
+                                                    min="0"
+                                                    max="1"
+                                                    step="0.01"
+                                                    v-model="store.volumeV2"
+                                                    @input="store.updateVolumes"
+                                                    class="w-16 h-1 bg-white/20 rounded-full appearance-none cursor-pointer accent-blue-500" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="flex items-center gap-4">
+                                        <div class="flex items-center gap-1 bg-white/10 p-0.5 rounded-md">
+                                            <button
+                                                v-for="l in [{id:'v1-pip', n:'教室优先'}, {id:'v2-pip', n:'课件优先'}, {id:'side-by-side', n:'左右'}, {id:'stacked', n:'上下'}, {id:'v1-only', n:'仅教室'}, {id:'v2-only', n:'仅课件'}]"
+                                                @click="store.setLayout(l.id)"
+                                                :class="['px-2 py-0.5 text-[10px] rounded transition', store.currentLayout === l.id ? 'bg-white text-black' : 'hover:bg-white/20 text-white/70']">
+                                                {{ l.n }}
+                                            </button>
+                                        </div>
+
+                                        <div class="flex items-center gap-1">
+                                            <button
+                                                v-for="rate in [0.8, 1, 1.25, 1.5, 2, 3, 4]"
+                                                @click="store.setPlaybackRate(rate)"
+                                                :class="['px-2 py-0.5 text-[10px] font-bold rounded border transition', store.playbackRate === rate ? 'bg-white text-black border-white' : 'border-white/20 hover:border-white/50']">
+                                                {{ rate }}x
+                                            </button>
+                                        </div>
+
+                                        <button @click="store.toggleFullscreen" class="hover:text-blue-400 transition">
+                                            <svg v-if="!store.isFullscreen" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                    stroke-width="2"
+                                                    d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path>
+                                            </svg>
+                                            <svg v-else class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </main>
+        </div>
+
+        <script type="module">
+            import { createApp, reactive, nextTick } from 'https://unpkg.com/petite-vue?module';
+
+            const store = reactive({
+                semesters: [],
+                courses: [],
+                sessions: [],
+                selectedTermId: '',
+                selectedCourse: null,
+                currentVideoId: null,
+                currentVideoTitle: '',
+                currentTeacher: '',
+                loadingCourses: false,
+                loadingSessions: false,
+                currentLayout: 'v1-pip',
+                isPlaying: false,
+                isSeeking: false,
+                currentTime: 0,
+                duration: 0,
+                volumeV1: 1,
+                volumeV2: 0,
+                playbackRate: 1,
+                isFullscreen: false,
+
+                init: async () => {
+                    try {
+                        const [termsRes, currentRes] = await Promise.all([fetch('/api/semesters'), fetch('/api/current-term')]);
+                        store.semesters = (await termsRes.json()).list ?? [];
+                        const currentData = await currentRes.json();
+                        store.selectedTermId = currentData.list?.[0]?.id ?? '';
+                        store.loadCourses();
+
+                        document.addEventListener('fullscreenchange', () => {
+                            store.isFullscreen = !!document.fullscreenElement;
+                        });
+                    } catch (e) {
+                        console.error('Init failed', e);
+                        store.loadCourses();
+                    }
+                },
+
+                initVideoSync: async () => {
+                    await nextTick();
+                    const v1 = document.getElementById('v1');
+                    const v2 = document.getElementById('v2');
+                    if (!v1 || !v2) return;
+
+                    const sync = (src, dest, isMaster = false) => {
+                        src.onplay = async () => {
+                            try {
+                                if (dest.paused) await dest.play();
+                            } catch (e) {}
+                            store.isPlaying = true;
+                        };
+                        src.onpause = () => {
+                            if (!dest.paused) dest.pause();
+                            store.isPlaying = false;
+                        };
+                        src.onseeking = () => {
+                            if (Math.abs(dest.currentTime - src.currentTime) > 0.1) {
+                                dest.currentTime = src.currentTime;
+                            }
+                        };
+                        src.onratechange = () => (dest.playbackRate = src.playbackRate);
+
+                        if (isMaster) {
+                            src.ontimeupdate = () => {
+                                if (!store.isSeeking) {
+                                    store.currentTime = src.currentTime;
+                                }
+                                store.duration = src.duration;
+                            };
+                            src.onloadedmetadata = () => {
+                                store.duration = src.duration;
+                            };
+                        }
+                    };
+                    sync(v1, v2, true);
+                    sync(v2, v1);
+                },
+
+                togglePlay: async () => {
+                    const v1 = document.getElementById('v1');
+                    const v2 = document.getElementById('v2');
+                    if (!v1 || !v2) return;
+                    if (v1.paused) {
+                        try {
+                            const p1 = v1.play();
+                            const p2 = v2.play();
+                            await Promise.all([p1, p2]);
+                        } catch (e) {}
+                    } else {
+                        v1.pause();
+                        v2.pause();
+                    }
+                },
+
+                seekStart: () => {
+                    store.isSeeking = true;
+                },
+
+                seek: (e) => {
+                    const v1 = document.getElementById('v1');
+                    const v2 = document.getElementById('v2');
+                    if (!v1 || !v2) return;
+                    const val = parseFloat(e.target.value);
+                    store.currentTime = val;
+                    v1.currentTime = v2.currentTime = val;
+                },
+
+                seekEnd: () => {
+                    store.isSeeking = false;
+                },
+
+                updateVolumes: () => {
+                    const v1 = document.getElementById('v1');
+                    const v2 = document.getElementById('v2');
+                    if (v1) v1.volume = store.volumeV1;
+                    if (v2) v2.volume = store.volumeV2;
+                },
+
+                setLayout: (id) => {
+                    store.currentLayout = id;
+                    store.updateVolumes();
+                },
+
+                setPlaybackRate: (rate) => {
+                    const v1 = document.getElementById('v1');
+                    if (!v1) return;
+                    v1.playbackRate = rate;
+                    store.playbackRate = rate;
+                },
+
+                toggleFullscreen: () => {
+                    const container = document.getElementById('video-player-container');
+                    if (!container) return;
+                    if (!document.fullscreenElement) {
+                        container.requestFullscreen().catch((err) => {
+                            console.error(`Error attempting to enable full-screen mode: ${err.message}`);
+                        });
+                    } else {
+                        document.exitFullscreen();
+                    }
+                },
+
+                formatDuration: (seconds) => {
+                    if (Number.isNaN(seconds)) return '00:00';
+                    const h = Math.floor(seconds / 3600);
+                    const m = Math.floor((seconds % 3600) / 60);
+                    const s = Math.floor(seconds % 60);
+                    if (h > 0) {
+                        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+                    }
+                    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+                },
+
+                onTermChange: async () => {
+                    store.selectedCourse = null;
+                    store.sessions = [];
+                    await store.loadCourses();
+                },
+
+                loadCourses: async () => {
+                    store.loadingCourses = true;
+                    try {
+                        const res = await fetch(`/api/subjects?termTimeId=${store.selectedTermId}`);
+                        store.courses = (await res.json()).list ?? [];
+                    } finally {
+                        store.loadingCourses = false;
+                    }
+                },
+
+                loadSessions: async (course) => {
+                    store.selectedCourse = course;
+                    store.loadingSessions = true;
+                    try {
+                        const res = await fetch(`/api/sessions?subjectId=${course.subjectId}&teclId=${course.teclId}`);
+                        const data = await res.json();
+                        store.sessions = data.list?.[0]?.responseVoList ?? [];
+                        store.sessions.sort((a, b) => (b.courBeginTime ?? 0) - (a.courBeginTime ?? 0));
+                    } finally {
+                        store.loadingSessions = false;
+                    }
+                },
+
+                playVideo: async (s) => {
+                    store.currentVideoId = s.videId;
+                    store.currentVideoTitle = s.videName;
+                    store.currentTeacher = s.userName;
+                    store.isPlaying = false;
+                    store.currentTime = 0;
+                    store.duration = 0;
+
+                    await store.initVideoSync();
+                    const v1 = document.getElementById('v1');
+                    const v2 = document.getElementById('v2');
+                    v1.src = v2.src = '';
+
+                    try {
+                        const res = await fetch(`/api/video-info?id=${s.videId}`);
+                        const info = await res.json();
+                        const videos = info.videoPlayResponseVoList ?? [];
+
+                        if (videos.length >= 2) {
+                            const v1Ready = new Promise((res) => (v1.oncanplay = res));
+                            const v2Ready = new Promise((res) => (v2.oncanplay = res));
+
+                            v1.src = videos[0].rtmpUrlHdv;
+                            v2.src = videos[1].rtmpUrlHdv;
+
+                            await Promise.all([v1Ready, v2Ready]);
+                            v1.playbackRate = v2.playbackRate = store.playbackRate;
+                            store.updateVolumes();
+                            try {
+                                await v1.play();
+                            } catch {}
+                        }
+                    } catch (e) {
+                        console.error('Load video failed', e);
+                    }
+                },
+
+                formatTime: (tsBegin, tsEnd) => {
+                    if (!tsBegin) return '时间未知';
+                    const begin = new Date(tsBegin);
+                    const beginStr = begin.toLocaleString('zh-CN', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false,
+                    });
+
+                    if (!tsEnd) return beginStr;
+                    const end = new Date(tsEnd);
+                    const endStr = end.toLocaleTimeString('zh-CN', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false,
+                    });
+                    return `${beginStr} - ${endStr}`;
+                },
+            });
+
+            createApp({ store }).mount('#app');
+            store.init();
+        </script>
+    </body>
+</html>
